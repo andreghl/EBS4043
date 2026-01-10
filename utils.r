@@ -108,16 +108,25 @@ ci <- function(data, CI = c(0.025, 0.975)){
   knitr::kable(ci)
 }
 
-monte.carlo <- function(N = 1000, B = 1000, alpha = 0.05, p.dist, theta){
+monte.carlo <- function(N = 1000, B = 1000, alpha = 0.05, p.dist = NULL, theta, data = NULL){
 
   S <- rep(0, N)
-  p.dist <- substitute(p.dist)
+  if(!is.null(p.dist)){
+    p.dist <- substitute(p.dist)
+  }
+  
 
   for(n in 1:N){
 
-    sample <- eval(p.dist)
+    if(!is.null(p.dist)){
+      s <- eval(p.dist)
+    }
 
-    Q  <- boot.mean(B, sample, tab = FALSE)
+    if(!is.null(data)){
+      s <- sample(data, size = length(data), replace = TRUE)
+    }
+
+    Q  <- boot.mean(B, s, tab = FALSE)
     lb <- quantile(Q, prob = alpha / 2)
     ub <- quantile(Q, prob = 1 - (alpha / 2))
 
@@ -161,16 +170,12 @@ stat.gamma <- function(data, shape, scale, breaks = 10) {
   # Transform gamma into bins
   prob <- seq(0, 1, length.out = breaks + 1)
   bins <- qgamma(prob, shape = shape, scale = scale)
-  
-  # Observed counts
   obs <- table(cut(data, bins, include.lowest = TRUE))
   
-  # Expected probabilities per bin
   exp.probs <- pgamma(bins[-1], shape, scale) -
                pgamma(bins[-length(bins)], shape, scale)
   
   exp <- n * exp.probs
-  
   sum((obs - exp)^2 / exp)
 }
 
@@ -195,8 +200,7 @@ test.gamma <- function(data, n.sim = 10000){
   }
 }
 
-simulator <- function(data, timeslots){
+simulator <- function(data, timeslots = c(35, 60)){
   # Not done yet
   
-
 }
