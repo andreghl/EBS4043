@@ -5,7 +5,7 @@ set.seed(2026)
 
 # Read CSV file
 data <- read.csv(
-  "/Users/flor/Downloads/Maastricht university/Master/Computational Research Skills/ScanRecords.csv",
+  "data/ScanRecords.csv",
   stringsAsFactors = FALSE
 )
 
