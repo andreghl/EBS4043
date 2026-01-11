@@ -1,5 +1,3 @@
-####
-
 boot.mean <- function(B, data, tab = TRUE, p.dist = NULL){
     n <- length(data)
     Q <- rep(0, B)
