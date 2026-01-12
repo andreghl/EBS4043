@@ -1,10 +1,6 @@
-# CASE STUDY: MRI SCHEDULING ANALYSIS (PART 1)
+# MRI SCHEDULING ANALYSIS (PART 1)
 
-set.seed(2026) # For reproducibility
-
-# ==============================================================================
-# 1. HELPER FUNCTIONS
-# ==============================================================================
+set.seed(2026) 
 
 # Function to calculate inter-arrival times respecting 08:00-17:00 working hours
 get_interarrival_times <- function(dates, times) {
@@ -12,21 +8,19 @@ get_interarrival_times <- function(dates, times) {
   df <- data.frame(date = dates, time = times)
   df <- df[order(df$date, df$time), ]
   
-  # Convert unique dates to a numeric index (Day 1, Day 2, etc.)
+  # Convert unique dates to a numeric index
   day_index <- as.numeric(factor(df$date, levels = unique(df$date)))
   
-  # Calculate continuous "working hours" timestamp
-  # Logic: (Day-1) * 9 hours + (Time - 8.0)
-  # This ignores the 15 hours between 17:00 and 08:00
+  # Calculate continuous "working hours" 
   continuous_time <- (day_index - 1) * 9 + (df$time - 8)
   
   # Return differences between consecutive calls
   return(diff(continuous_time))
 }
 
-# Generic Bootstrap Function (Handles both Parametric and Non-Parametric)
-# - If 'sim_function' is provided -> Parametric (simulates data)
-# - If 'sim_function' is NULL     -> Non-Parametric (resamples data)
+# Generic Bootstrap Function
+# If 'sim_function' is provided -> Parametric 
+# If 'sim_function' is NULL     -> Non-Parametric 
 run_bootstrap <- function(data, B, statistic_fn, sim_function = NULL) {
   n <- length(data)
   replicates <- numeric(B)
@@ -49,12 +43,6 @@ run_bootstrap <- function(data, B, statistic_fn, sim_function = NULL) {
     ci  = quantile(replicates, probs = c(0.025, 0.975))
   )
 }
-
-# ==============================================================================
-# 2. LOAD AND PREPARE DATA
-# ==============================================================================
-
-# Ensure the file is in your working directory or use setwd()
 if(file.exists("EBS4043/data/ScanRecords.csv")) {
   df <- read.csv("EBS4043/data/ScanRecords.csv")
 } else {
@@ -65,12 +53,9 @@ if(file.exists("EBS4043/data/ScanRecords.csv")) {
 data_p1 <- subset(df, PatientType == "Type 1")
 data_p2 <- subset(df, PatientType == "Type 2")
 
-# ==============================================================================
-# 3. TYPE 1 ANALYSIS (PARAMETRIC)
-# ==============================================================================
-# Known: Duration ~ Normal, Arrivals ~ Poisson (Inter-arrivals ~ Exponential)
+# type 1 (paramteric)
 
-# --- A. Durations ---
+# Durations
 mu1_hat <- mean(data_p1$Duration)
 sd1_hat <- sd(data_p1$Duration)
 
@@ -80,34 +65,23 @@ sim_normal <- function(n) { rnorm(n, mean = mu1_hat, sd = sd1_hat) }
 # Bootstrap: Mean Duration
 boot_p1_mean <- run_bootstrap(data_p1$Duration, B = 5000, mean, sim_normal)
 
-# --- B. Arrivals ---
 # Calculate inter-arrival times (hours)
 inter_arrivals_p1 <- get_interarrival_times(data_p1$Date, data_p1$Time)
 lambda1_hat <- 1 / mean(inter_arrivals_p1) # Rate parameter for Exponential
 
-# ==============================================================================
-# 4. TYPE 2 ANALYSIS (NON-PARAMETRIC)
-# ==============================================================================
-# Known: Distributions are UNKNOWN.
-
-# --- A. Durations ---
-# Bootstrap: Mean Duration (Resampling directly from data)
+# type 2 (non-paramteric)
+# Bootstrap: Mean Duration 
 boot_p2_mean <- run_bootstrap(data_p2$Duration, B = 5000, mean, sim_function = NULL)
 
 # Bootstrap: 95th Percentile (Quantile)
 q95_fn <- function(x) { as.numeric(quantile(x, 0.95)) }
 boot_p2_q95 <- run_bootstrap(data_p2$Duration, B = 5000, q95_fn, sim_function = NULL)
 
-# --- B. Arrivals ---
 # Calculate inter-arrival times (hours)
 inter_arrivals_p2 <- get_interarrival_times(data_p2$Date, data_p2$Time)
 mean_inter_p2 <- mean(inter_arrivals_p2) # Just the empirical mean
 
-# ==============================================================================
-# 5. ROBUSTNESS CHECK (MONTE CARLO STUDY)
-# ==============================================================================
-# Goal: Prove to management that Non-Parametric Bootstrap works even if we 
-# don't know the true distribution. We simulate a "True" Gamma distribution.
+# monte carlo
 
 cat("\nRunning Monte Carlo Robustness Check (Type 2)...\n")
 mc_reps <- 1000
@@ -118,32 +92,27 @@ scale_true <- var(data_p2$Duration) / mean(data_p2$Duration)
 true_q95   <- qgamma(0.95, shape = shape_true, scale = scale_true)
 
 for(i in 1:mc_reps) {
-  # 1. Generate synthetic data from the "Truth"
+  # Generate synthetic data from the "Truth"
   syn_data <- rgamma(length(data_p2$Duration), shape = shape_true, scale = scale_true)
   
-  # 2. Run Non-Parametric Bootstrap on this synthetic data
+  #  Run Non-Parametric Bootstrap on this synthetic data
   bs_res <- run_bootstrap(syn_data, B = 500, q95_fn, sim_function = NULL)
   
-  # 3. Check if the interval captured the "True" Q95
+  # Check if the interval captured the "True" Q95
   if(true_q95 >= bs_res$ci[1] && true_q95 <= bs_res$ci[2]) {
     coverage_count <- coverage_count + 1
   }
 }
 coverage_pct <- (coverage_count / mc_reps) * 100
 
-# ==============================================================================
-# 6. SLOT OPTIMIZATION (OVERRUN ANALYSIS)
-# ==============================================================================
-# Goal: Find slot length where P(Duration > Slot) <= 10%
+# slot lengths
 
 slot_options <- seq(20, 90, by = 5) # Minutes
 results_df <- data.frame(Minutes = slot_options, Hours = slot_options / 60)
 
 # Calculate overrun probability for each slot
-# Type 1: Use Theoretical Normal (1 - pnorm)
 results_df$P1_Overrun <- 1 - pnorm(results_df$Hours, mean = mu1_hat, sd = sd1_hat)
 
-# Type 2: Use Empirical Data (mean(duration > slot))
 results_df$P2_Overrun <- sapply(results_df$Hours, function(s) {
   mean(data_p2$Duration > s)
 })
@@ -152,9 +121,7 @@ results_df$P2_Overrun <- sapply(results_df$Hours, function(s) {
 rec_slot_p1 <- results_df$Minutes[which(results_df$P1_Overrun <= 0.10)[1]]
 rec_slot_p2 <- results_df$Minutes[which(results_df$P2_Overrun <= 0.10)[1]]
 
-# ==============================================================================
-# 7. PRINT FINAL REPORT
-# ==============================================================================
+# print results
 
 cat("\n--- PATIENT TYPE 1 (Parametric: Normal/Exp) ---\n")
 cat(sprintf("Mean Duration:      %.2f hrs (SE: %.4f)\n", mu1_hat, boot_p1_mean$se))
